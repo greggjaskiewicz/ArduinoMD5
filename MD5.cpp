@@ -2,22 +2,16 @@
 
 MD5::MD5()
 {
-	//nothing
-	return;
-}
+    this->a = 0x67452301;
+    this->b = 0xefcdab89;
+    this->c = 0x98badcfe;
+    this->d = 0x10325476;
 
-char* MD5::make_digest(const unsigned char *digest, int len) /* {{{ */
-{
-	char * md5str = (char*) malloc(sizeof(char)*(len*2+1));
-	static const char hexits[17] = "0123456789abcdef";
-	int i;
+    this->lo = 0;
+    this->hi = 0;
 
-	for (i = 0; i < len; i++) {
-		md5str[i * 2]       = hexits[digest[i] >> 4];
-		md5str[(i * 2) + 1] = hexits[digest[i] &  0x0F];
-	}
-	md5str[len * 2] = '\0';
-	return md5str;
+    memset(this->block, 0, sizeof(this->block));
+    memset(this->buffer, 0, sizeof(this->buffer));
 }
 
 /*
@@ -56,32 +50,31 @@ char* MD5::make_digest(const unsigned char *digest, int len) /* {{{ */
 	SET(n)
 #else
 # define SET(n) \
-	(ctx->block[(n)] = \
+	(this->block[(n)] = \
 	(MD5_u32plus)ptr[(n) * 4] | \
 	((MD5_u32plus)ptr[(n) * 4 + 1] << 8) | \
 	((MD5_u32plus)ptr[(n) * 4 + 2] << 16) | \
 	((MD5_u32plus)ptr[(n) * 4 + 3] << 24))
 # define GET(n) \
-	(ctx->block[(n)])
+	(this->block[(n)])
 #endif
 
 /*
  * This processes one or more 64-byte data blocks, but does NOT update
  * the bit counters.  There are no alignment requirements.
  */
-const void *MD5::body(void *ctxBuf, const void *data, size_t size)
+void MD5::body(const void *data, size_t size)
 {
-	MD5_CTX *ctx = (MD5_CTX*)ctxBuf;
 	const unsigned char *ptr;
 	MD5_u32plus a, b, c, d;
 	MD5_u32plus saved_a, saved_b, saved_c, saved_d;
 
 	ptr = (unsigned char*)data;
 
-	a = ctx->a;
-	b = ctx->b;
-	c = ctx->c;
-	d = ctx->d;
+	a = this->a;
+	b = this->b;
+	c = this->c;
+	d = this->d;
 
 	do {
 		saved_a = a;
@@ -171,40 +164,22 @@ const void *MD5::body(void *ctxBuf, const void *data, size_t size)
 		ptr += 64;
 	} while (size -= 64);
 
-	ctx->a = a;
-	ctx->b = b;
-	ctx->c = c;
-	ctx->d = d;
-
-	return ptr;
+	this->a = a;
+	this->b = b;
+	this->c = c;
+	this->d = d;
 }
 
-void MD5::MD5Init(void *ctxBuf)
+void MD5::update(const void *data, size_t size)
 {
-	MD5_CTX *ctx = (MD5_CTX*)ctxBuf;
-	ctx->a = 0x67452301;
-	ctx->b = 0xefcdab89;
-	ctx->c = 0x98badcfe;
-	ctx->d = 0x10325476;
-
-	ctx->lo = 0;
-	ctx->hi = 0;
-
-    memset(ctx->block, 0, sizeof(ctx->block));
-    memset(ctx->buffer, 0, sizeof(ctx->buffer));
-}
-
-void MD5::MD5Update(void *ctxBuf, const void *data, size_t size)
-{
-	MD5_CTX *ctx = (MD5_CTX*)ctxBuf;
 	MD5_u32plus saved_lo;
 	MD5_u32plus used, free;
 
-	saved_lo = ctx->lo;
-	if ((ctx->lo = (saved_lo + size) & 0x1fffffff) < saved_lo) {
-		ctx->hi++;
+	saved_lo = this->lo;
+	if ((this->lo = (saved_lo + size) & 0x1fffffff) < saved_lo) {
+		this->hi++;
 	}
-	ctx->hi += size >> 29;
+	this->hi += size >> 29;
 
 	used = saved_lo & 0x3f;
 
@@ -212,91 +187,70 @@ void MD5::MD5Update(void *ctxBuf, const void *data, size_t size)
 		free = 64 - used;
 
 		if (size < free) {
-			memcpy(&ctx->buffer[used], data, size);
+			memcpy(&this->buffer[used], data, size);
 			return;
 		}
 
-		memcpy(&ctx->buffer[used], data, free);
+		memcpy(&this->buffer[used], data, free);
 		data = (unsigned char *)data + free;
 		size -= free;
-		body(ctx, ctx->buffer, 64);
+		body(this->buffer, 64);
 	}
 
 	if (size >= 64) {
-		data = body(ctx, data, size & ~(size_t)0x3f);
+		body(data, size & ~(size_t)0x3f);
 		size &= 0x3f;
 	}
 
-	memcpy(ctx->buffer, data, size);
+	memcpy(this->buffer, data, size);
 }
 
-void MD5::MD5Final(unsigned char *result, void *ctxBuf)
+void MD5::finish(unsigned char *result)
 {
-	MD5_CTX *ctx = (MD5_CTX*)ctxBuf;
 	MD5_u32plus used, free;
 
-	used = ctx->lo & 0x3f;
+	used = this->lo & 0x3f;
 
-	ctx->buffer[used++] = 0x80;
+	this->buffer[used++] = 0x80;
 
 	free = 64 - used;
 
 	if (free < 8) {
-		memset(&ctx->buffer[used], 0, free);
-		body(ctx, ctx->buffer, 64);
+		memset(&this->buffer[used], 0, free);
+		body(this->buffer, 64);
 		used = 0;
 		free = 64;
 	}
 
-	memset(&ctx->buffer[used], 0, free - 8);
+	memset(&this->buffer[used], 0, free - 8);
 
-	ctx->lo <<= 3;
-	ctx->buffer[56] = ctx->lo;
-	ctx->buffer[57] = ctx->lo >> 8;
-	ctx->buffer[58] = ctx->lo >> 16;
-	ctx->buffer[59] = ctx->lo >> 24;
-	ctx->buffer[60] = ctx->hi;
-	ctx->buffer[61] = ctx->hi >> 8;
-	ctx->buffer[62] = ctx->hi >> 16;
-	ctx->buffer[63] = ctx->hi >> 24;
+	this->lo <<= 3;
+	this->buffer[56] = this->lo;
+	this->buffer[57] = this->lo >> 8;
+	this->buffer[58] = this->lo >> 16;
+	this->buffer[59] = this->lo >> 24;
+	this->buffer[60] = this->hi;
+	this->buffer[61] = this->hi >> 8;
+	this->buffer[62] = this->hi >> 16;
+	this->buffer[63] = this->hi >> 24;
 
-	body(ctx, ctx->buffer, 64);
+	body(this->buffer, 64);
 
-	result[0] = ctx->a;
-	result[1] = ctx->a >> 8;
-	result[2] = ctx->a >> 16;
-	result[3] = ctx->a >> 24;
-	result[4] = ctx->b;
-	result[5] = ctx->b >> 8;
-	result[6] = ctx->b >> 16;
-	result[7] = ctx->b >> 24;
-	result[8] = ctx->c;
-	result[9] = ctx->c >> 8;
-	result[10] = ctx->c >> 16;
-	result[11] = ctx->c >> 24;
-	result[12] = ctx->d;
-	result[13] = ctx->d >> 8;
-	result[14] = ctx->d >> 16;
-	result[15] = ctx->d >> 24;
-
-	memset(ctx, 0, sizeof(*ctx));
-}
-unsigned char* MD5::make_hash(char *arg)
-{
-	MD5_CTX context;
-	unsigned char * hash = (unsigned char *) malloc(16);
-	MD5Init(&context);
-	MD5Update(&context, arg, strlen(arg));
-	MD5Final(hash, &context);
-	return hash;
-}
-unsigned char* MD5::make_hash(char *arg,size_t size)
-{
-	MD5_CTX context;
-	unsigned char * hash = (unsigned char *) malloc(16);
-	MD5Init(&context);
-	MD5Update(&context, arg, size);
-	MD5Final(hash, &context);
-	return hash;
+	result[0] = this->a;
+	result[1] = this->a >> 8;
+	result[2] = this->a >> 16;
+	result[3] = this->a >> 24;
+	result[4] = this->b;
+	result[5] = this->b >> 8;
+	result[6] = this->b >> 16;
+	result[7] = this->b >> 24;
+	result[8] = this->c;
+	result[9] = this->c >> 8;
+	result[10] = this->c >> 16;
+	result[11] = this->c >> 24;
+	result[12] = this->d;
+	result[13] = this->d >> 8;
+	result[14] = this->d >> 16;
+	result[15] = this->d >> 24;
 }
 

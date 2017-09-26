@@ -1,8 +1,13 @@
 #ifndef MD5_h
 #define MD5_h
 
-#include "Arduino.h"
+/**
+ * @file MD5.h
+ *
+ * Class declaration for MD5 and helper enums
+ */
 
+#include "MD5_config.h"
 /*
  * This is an OpenSSL-compatible implementation of the RSA Data Security,
  * Inc. MD5 Message-Digest Algorithm (RFC 1321).
@@ -25,28 +30,49 @@
  * <scott@macvicar.net>
  */
 
-#include <string.h>
-
 typedef unsigned long MD5_u32plus;
 
-typedef struct {
-	MD5_u32plus lo, hi;
-	MD5_u32plus a, b, c, d;
-	unsigned char buffer[64];
-	MD5_u32plus block[16];
-} MD5_CTX;
+//typedef struct {
+//    MD5_u32plus lo, hi;
+//    MD5_u32plus a, b, c, d;
+//    unsigned char buffer[64];
+//    MD5_u32plus block[16];
+//} MD5_CTX;/**< MD5 context */
 
 class MD5
 {
 public:
+	/**
+	 * class constructor.
+	 * Does nothing.
+	 */
 	MD5();
-	static unsigned char* make_hash(char *arg);
-	static unsigned char* make_hash(char *arg,size_t size);
-	static char* make_digest(const unsigned char *digest, int len);
- 	static const void *body(void *ctxBuf, const void *data, size_t size);
-	static void MD5Init(void *ctxBuf);
-	static void MD5Final(unsigned char *result, void *ctxBuf);
-	static void MD5Update(void *ctxBuf, const void *data, size_t size);
-};
 
+    /** This processes one or more 64-byte data blocks, but does NOT update the bit counters.
+     *  There are no alignment requirements.
+     *
+     *  @param data pointer to the data that will be processed
+     *  @param size size_t type, that hold the size
+     */
+    void update(const void *data, size_t size);
+
+    /** finish finilized the Hashing process and creates the diggest.
+     *  This function must be called after MD5Init and MD5Update
+     *  @param result pointer that will hold the digest.
+     *  The class is not usable anymore after this
+     */
+    void finish(unsigned char *result);
+
+private:
+
+    void body(const void *data, size_t size);
+
+    MD5_u32plus lo, hi;
+    MD5_u32plus a, b, c, d;
+    unsigned char buffer[64];
+    MD5_u32plus block[16];
+};
+extern MD5 hashMD5;
 #endif
+
+
